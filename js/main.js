@@ -24,7 +24,9 @@ let thumbs = {};
 
 // ---------- speech ----------
 let voices = [];
-const hasSpeech = 'speechSynthesis' in window;
+const VOICE_ENABLED = false; // set to true to bring back the read-aloud voice
+const hasSpeech = VOICE_ENABLED && 'speechSynthesis' in window;
+if (!VOICE_ENABLED) document.documentElement.classList.add('novoice');
 function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch { } }
 if (hasSpeech) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 function speak(text, force = false) {
@@ -89,7 +91,7 @@ function showHome() {
   overlay(`
     <div class="home">
       <div class="home-badge">Unit · Good food</div>
-      <h1 class="home-title">The Great <span>8b</span> Cooking Lesson</h1>
+      <h1 class="home-title">Mr Fuhs' great cooking lesson for <span>8b</span></h1>
       <p class="home-sub">Learn the food words. Then cook a meal in our 3D kitchen!</p>
       <div class="home-btns">
         <button class="btn big teal" data-go="sort"><span class="b-ico">🗂️</span><span><b>a) Sort the words</b><small>Make the table: vegetables, meat, dairy products, other</small></span></button>

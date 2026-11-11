@@ -258,3 +258,7 @@ input, select { font: inherit; }
   .tile { min-height: 92px; }
   .tile-img { width: 54px; height: 54px; }
 }
+
+/* read-aloud voice switched off */
+.novoice #readBtn, .novoice [data-act="say"], .novoice [data-say], .novoice [data-sayword],
+.novoice .chip-toggle:has([data-set="read"]) { display: none !important; }
