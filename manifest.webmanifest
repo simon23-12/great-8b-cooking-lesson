@@ -1,0 +1,1 @@
+{ "name": "The Great 8b Cooking Lesson", "short_name": "8b Cooking", "start_url": "./", "display": "standalone", "orientation": "any", "background_color": "#fdf6ec", "theme_color": "#2aa6a0", "icons": [ { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }, { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" } ] }
