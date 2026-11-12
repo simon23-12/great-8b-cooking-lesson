@@ -146,6 +146,10 @@ export class Kitchen {
     this.scene.add(v.knob);
     v.knobLight = new THREE.Mesh(new THREE.CircleGeometry(0.05, 12), new THREE.MeshBasicMaterial({ color: 0x552222 }));
     v.knobLight.rotation.x = -Math.PI / 2; v.knobLight.position.set(x + 0.38, HOB_Y + 0.002, 0.85); this.scene.add(v.knobLight);
+    // green glow ring shown while an ingredient is dragged over this vessel
+    v.top = kind === 'pot' ? 1.12 : 0.32;
+    v.hl = new THREE.Mesh(new THREE.TorusGeometry(kind === 'pot' ? 1.08 : 1.12, 0.07, 10, 48), new THREE.MeshBasicMaterial({ color: 0x3ddc84, transparent: true, opacity: 0.9, depthTest: false }));
+    v.hl.rotation.x = -Math.PI / 2; v.hl.position.set(x, HOB_Y + v.top, z); v.hl.renderOrder = 5; v.hl.visible = false; this.scene.add(v.hl);
 
     // bubbles + steam pools
     v.bubbles = [];
@@ -438,6 +442,24 @@ export class Kitchen {
     while (v.chunks.length > 120) v.group.remove(v.chunks.shift());
   }
 
+  // ---------- drag & drop targets ----------
+  // Which vessel is under the finger? Generous circle around each pot/pan on screen.
+  vesselAt(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    let best = null, bestD = Infinity;
+    for (const v of Object.values(this.vessels)) {
+      const c = new V3(v.x, HOB_Y + v.top * 0.6, v.z).project(this.camera);
+      const e = new V3(v.x + 1.1, HOB_Y + v.top * 0.6, v.z).project(this.camera);
+      const sx = rect.left + (c.x + 1) / 2 * rect.width, sy = rect.top + (1 - c.y) / 2 * rect.height;
+      const rad = Math.abs(e.x - c.x) / 2 * rect.width * 1.35;
+      const d = Math.hypot(clientX - sx, clientY - sy);
+      if (d < rad && d / rad < bestD) { bestD = d / rad; best = v.kind; }
+    }
+    return best;
+  }
+  setDropTarget(vn) { for (const v of Object.values(this.vessels)) v.hl.visible = v.kind === vn; }
+
   // ---------- picking ----------
   pick(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
@@ -506,6 +528,7 @@ export class Kitchen {
     v.heatCur += ((v.heat ? 1 : 0) - v.heatCur) * Math.min(1, dt * 1.5);
     v.ring.material.emissiveIntensity = v.heatCur * 2.4;
     v.knob.rotation.y = -v.heatCur * 2.2;
+    if (v.hl.visible) { const s = 1 + Math.sin(t * 8) * 0.03; v.hl.scale.set(s, s, s); }
     const surf = v.base + v.cur;
     v.boiling = v.heatCur > 0.5 && v.cur > 0.02;
     const liquidish = v.kind === 'pot' || v.cur > 0.08;

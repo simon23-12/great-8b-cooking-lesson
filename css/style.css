@@ -78,7 +78,6 @@ input, select { font: inherit; }
 .tile.picked .tick { display: grid; }
 .tile.used { opacity: .4; }
 .tile.off { opacity: .28; filter: grayscale(.8); order: 2; }
-.tile.used { order: 1; }
 .tile.hint { border-color: var(--orange); box-shadow: 0 0 0 4px rgba(255, 138, 61, .45); animation: pulse .6s ease-in-out infinite alternate; opacity: 1; }
 .tile.shake, .shake { animation: shake .4s; }
 .tile.bounce { animation: bounce .35s; }
@@ -260,5 +259,15 @@ input, select { font: inherit; }
 }
 
 /* read-aloud voice switched off */
-.novoice #readBtn, .novoice [data-act="say"], .novoice [data-say], .novoice [data-sayword],
+.novoice #readBtn, .novoice button[data-act="say"], .novoice button[data-say], .novoice button[data-sayword],
 .novoice .chip-toggle:has([data-set="read"]) { display: none !important; }
+
+/* drag & drop */
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 50; width: 96px; height: 96px; margin: -48px 0 0 -48px; pointer-events: none;
+  display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 10px 24px rgba(31,53,80,.3);
+  border: 3px solid var(--line); transition: border-color .15s, background .15s, opacity .25s; will-change: transform; }
+.drag-ghost img { width: 78px; height: 78px; object-fit: contain; }
+.drag-ghost.over { border-color: #3ddc84; background: rgba(230,255,240,.95); }
+.drag-ghost.back { transition: transform .3s ease-in, opacity .3s; opacity: 0; }
+.drag-ghost.drop { opacity: 0; }
+.tile.dragging { opacity: .35; transform: scale(.94); }

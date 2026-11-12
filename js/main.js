@@ -71,7 +71,7 @@ function buildTiles() {
     const b = document.createElement('button');
     b.className = 'tile'; b.dataset.key = key; b.setAttribute('aria-label', ing.name);
     b.innerHTML = `<span class="tile-img">${thumbs[key] ? `<img src="${thumbs[key]}" alt="" draggable="false">` : `<span class="emo">${ing.emoji}</span>`}</span><span class="tile-name">${wordHTML(key)}</span><span class="tick">✓</span>`;
-    b.addEventListener('click', () => onTile(key));
+    b.addEventListener('click', () => { if (drag.suppressClick) return; onTile(key); });
     wrap.appendChild(b);
   }
 }
@@ -204,25 +204,103 @@ async function onTile(key) {
     }
     return;
   }
-  if (S.mode === 'cook') {
-    const st = curStep();
-    if (!S.picked.includes(key)) { sound.wrong(); shake(el); toast(`You don't need <b>${ing.name}</b> for this meal.`, 'bad'); return; }
-    if (S.used.has(key)) { toast(`The ${ing.name} ${ing.name.endsWith('s') ? 'are' : 'is'} already in the ${st.v || 'pan'}.`); return; }
-    if (st.t !== 'add') { sound.wrong(); shake(el); toast(`Not now! First: <i>${st.text}</i>`, 'bad'); return; }
-    if (!st.items.includes(key)) { S.mistakes++; sound.wrong(); shake(el); toast(`Not the ${ing.name}! Read the step again. 🙂`, 'bad'); return; }
-    if (S.stepAdded.has(key) || S.busy) return;
-    S.stepAdded.add(key); S.used.add(key); el.classList.add('used'); el.classList.remove('hint'); updateRecipeCard();
-    S.busy = true; sound.whoosh();
-    const p = kitchen.addToVessel(key, st.v);
-    setTimeout(() => (ing.how === 'pour' ? sound.pour() : sound.plop()), ing.how === 'pour' ? 900 : 700);
-    await p; S.busy = false;
-    renderStep();
-    if (st.items.every(k => S.stepAdded.has(k))) nextStep();
-    return;
-  }
+  if (S.mode === 'cook') { tryAdd(key, null); return; }
   // in other modes: just a little bounce for vocabulary practice
   el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce');
 }
+// Put an ingredient into the pot/pan. vn = vessel it was dropped on (null when tapped).
+// Returns true when the ingredient really went in.
+function tryAdd(key, vn) {
+  const el = tileEl(key), ing = INGREDIENTS[key], st = curStep();
+  if (!S.picked.includes(key)) { sound.wrong(); shake(el); toast(`You don't need <b>${ing.name}</b> for this meal.`, 'bad'); return false; }
+  if (S.used.has(key)) { toast(`The ${ing.name} ${ing.name.endsWith('s') ? 'are' : 'is'} already in the ${st.v || 'pan'}.`); return false; }
+  if (st.t !== 'add') { sound.wrong(); shake(el); toast(`Not now! First: <i>${st.text}</i>`, 'bad'); return false; }
+  if (!st.items.includes(key)) { S.mistakes++; sound.wrong(); shake(el); toast(`Not the ${ing.name}! Read the step again. 🙂`, 'bad'); return false; }
+  if (vn && vn !== st.v) { S.mistakes++; sound.wrong(); shake(el); toast(`Not in the ${vn}! Put the ${ing.name} in the <b>${st.v}</b>.`, 'bad'); return false; }
+  if (S.stepAdded.has(key) || S.busy) return false;
+  S.stepAdded.add(key); S.used.add(key); el.classList.add('used'); el.classList.remove('hint'); updateRecipeCard();
+  S.busy = true; sound.whoosh();
+  const p = kitchen.addToVessel(key, st.v);
+  setTimeout(() => (ing.how === 'pour' ? sound.pour() : sound.plop()), ing.how === 'pour' ? 900 : 700);
+  p.then(() => {
+    S.busy = false; renderStep();
+    if (st.items.every(k => S.stepAdded.has(k))) nextStep();
+  });
+  return true;
+}
+
+// ---------- drag & drop: tile -> pot / pan ----------
+const drag = { key: null, active: false, x0: 0, y0: 0, t0: 0, ghost: null, over: null, holdT: 0, suppressClick: false };
+const canDrag = key => S.mode === 'cook' && S.picked.includes(key) && !S.used.has(key);
+const portrait = () => matchMedia('(orientation: portrait), (max-width: 900px)').matches;
+function dragStart(key, x, y) { Object.assign(drag, { key, active: false, x0: x, y0: y, t0: performance.now(), over: null }); }
+function dragActivate(x, y) {
+  drag.active = true; sound.init();
+  const g = drag.ghost = document.createElement('div'); g.className = 'drag-ghost';
+  g.innerHTML = thumbs[drag.key] ? `<img src="${thumbs[drag.key]}" alt="">` : `<span class="emo">${INGREDIENTS[drag.key].emoji}</span>`;
+  document.body.appendChild(g); tileEl(drag.key)?.classList.add('dragging');
+  dragMove(x, y);
+}
+function dragMove(x, y) {
+  if (!drag.active) return;
+  drag.ghost.style.transform = `translate(${x}px, ${y}px)`;
+  const vn = kitchen.vesselAt(x, y);
+  if (vn !== drag.over) { drag.over = vn; kitchen.setDropTarget(vn); drag.ghost.classList.toggle('over', !!vn); }
+}
+function dragEnd(x, y) {
+  clearTimeout(drag.holdT);
+  if (!drag.key) return;
+  const { key, active } = drag; drag.key = null;
+  if (!active) return;
+  drag.active = false; drag.suppressClick = true; setTimeout(() => { drag.suppressClick = false; }, 400);
+  const vn = kitchen.vesselAt(x, y); kitchen.setDropTarget(null);
+  tileEl(key)?.classList.remove('dragging');
+  const g = drag.ghost; drag.ghost = null;
+  if (vn && tryAdd(key, vn)) { g.classList.add('drop'); setTimeout(() => g.remove(), 250); return; }
+  if (!vn && S.mode === 'cook') toast('Drop it on the <b>pot</b> or the <b>pan</b>. 🙂', 'info', 1800);
+  const r = tileEl(key)?.getBoundingClientRect();
+  g.classList.add('back');
+  if (r) g.style.transform = `translate(${r.left + r.width / 2}px, ${r.top + r.height / 2}px) scale(.6)`;
+  setTimeout(() => g.remove(), 320);
+}
+function dragCancel() {
+  clearTimeout(drag.holdT); drag.key = null;
+  if (drag.active) { drag.active = false; kitchen.setDropTarget(null); $$('.tile.dragging').forEach(t => t.classList.remove('dragging')); drag.ghost?.remove(); drag.ghost = null; }
+}
+function initDrag() {
+  const tiles = $('#tiles');
+  const keyOf = e => e.target.closest('.tile')?.dataset.key;
+  // touch (iPad): decide on the first move whether this is a drag or a scroll of the ingredient box
+  tiles.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return dragCancel();
+    const key = keyOf(e); if (!key || !canDrag(key)) return;
+    const t = e.touches[0]; dragStart(key, t.clientX, t.clientY);
+    drag.holdT = setTimeout(() => { if (drag.key && !drag.active) dragActivate(drag.x0, drag.y0); }, 220); // press & hold also starts a drag
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!drag.key) return;
+    const t = e.touches[0], dx = t.clientX - drag.x0, dy = t.clientY - drag.y0;
+    if (!drag.active) {
+      if (Math.hypot(dx, dy) < 8) return;
+      clearTimeout(drag.holdT);
+      const towardKitchen = portrait() ? (dy < 0 && -dy > Math.abs(dx) * 0.8) : (Math.abs(dx) > Math.abs(dy) * 0.8);
+      if (!towardKitchen) { drag.key = null; return; } // let the box scroll
+      dragActivate(t.clientX, t.clientY);
+    }
+    e.preventDefault(); dragMove(t.clientX, t.clientY);
+  }, { passive: false });
+  document.addEventListener('touchend', e => { if (!drag.key) return; const t = e.changedTouches[0]; if (drag.active) e.preventDefault(); dragEnd(t.clientX, t.clientY); }, { passive: false });
+  document.addEventListener('touchcancel', dragCancel);
+  // mouse (laptop / whiteboard)
+  tiles.addEventListener('mousedown', e => { const key = keyOf(e); if (e.button === 0 && key && canDrag(key)) dragStart(key, e.clientX, e.clientY); });
+  document.addEventListener('mousemove', e => {
+    if (!drag.key) return;
+    if (!drag.active) { if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 8) return; dragActivate(e.clientX, e.clientY); }
+    dragMove(e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseup', e => { if (drag.key) dragEnd(e.clientX, e.clientY); });
+}
+
 function startCooking() {
   S.mode = 'cook'; S.step = 0;
   $('#recipeCard').classList.add('collapsed');
@@ -246,7 +324,7 @@ function renderStep() {
     case 'heat': body = `<button class="btn act" data-act="heat">🔥 Turn on the cooker</button><span class="muted small">or tap the knob</span>`; break;
     case 'chop': body = `<button class="btn act" data-act="chop" ${S.busy ? 'disabled' : ''}>🔪 Chop! <span class="cnt">${S.chopCount}/${S.chopNeed}</span></button><span class="muted small">or tap the board</span>`; break;
     case 'stir': body = `<button class="btn act" data-act="stir">🥄 Stir <span class="cnt">${S.stirCount}/4</span></button>`; break;
-    case 'add': body = `<span class="muted">👉 Tap the right ingredients in the box.</span><span class="counter">${S.stepAdded.size}/${st.items.length}</span><button class="btn ghost" data-act="hint">💡 Hint</button>`; break;
+    case 'add': body = `<span class="muted">👉 Tap or drag the right ingredients into the <b>${st.v}</b>.</span><span class="counter">${S.stepAdded.size}/${st.items.length}</span><button class="btn ghost" data-act="hint">💡 Hint</button>`; break;
     case 'wait': body = `<div class="timer"><span class="t-big" id="timerTxt">${fmtTimer(S.waitLeft)}</span><span class="t-sub">left</span></div>
       <div class="speed inline"><span class="speed-label">⏩ Faster:</span>${speedHTML()}</div>`; break;
     case 'serve': body = `<button class="btn act orange" data-act="serve">🍽️ Serve the meal</button>`; break;
@@ -494,7 +572,7 @@ function frame(now) {
   $('#topSpeed').innerHTML = `<span class="speed-label">⏩ Time</span>${speedHTML()}`;
   applyWords(); updateTopIcons();
   try { thumbs = makeThumbs(BOX_ORDER); } catch (e) { console.warn('thumbnails failed', e); thumbs = {}; }
-  buildTiles();
+  buildTiles(); initDrag();
   $('#loading').remove();
   showHome();
   requestAnimationFrame(frame);
